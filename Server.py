@@ -13,15 +13,15 @@ class FTPserverThread(threading.Thread):
         self.conn=conn
         self.addr=addr
         self.basewd=currdir #folder script is running from
-        self.cwd=self.basewd
+        self.cwd=self.basewd 
         self.rest=False
         self.pasv_mode=False
         threading.Thread.__init__(self)
  
     def run(self):
-        self.conn.send('Welcome!\r\n')
+        self.conn.send('220 Welcome!\r\n')
         while True:
-            cmd=self.conn.recv(256) #receive data, Max 256 at once
+            cmd=self.conn.recv(256) #Max buffer size
             if not cmd: break
             else:
                 print 'Recieved:',cmd
@@ -30,32 +30,39 @@ class FTPserverThread(threading.Thread):
                     func(cmd)
                 except Exception,e:
                     print 'ERROR:',e
-                    self.conn.send('Sorry.\r\n')
+                    self.conn.send('500 Sorry.\r\n')
  
-    def USER(self,cmd): #Authentication username.
-        self.conn.send('OK.\r\n')
-    def QUIT(self,cmd): #Disconnect.
-        self.conn.send('Disconnected\r\n')		
-    def PASS(self,cmd): #Authentication password.
-        self.conn.send('OK.\r\n')
-    def TYPE(self,cmd): #Sets the transfer mode
+    def SYST(self,cmd):
+        self.conn.send('215 UNIX Type: L8\r\n')
+    def OPTS(self,cmd):
+        if cmd[5:-2].upper()=='UTF8 ON':
+            self.conn.send('200 OK.\r\n')
+        else:
+            self.conn.send('451 Sorry.\r\n')
+    def USER(self,cmd):
+        self.conn.send('331 OK.\r\n')
+    def PASS(self,cmd):
+        self.conn.send('230 OK.\r\n')
+    def QUIT(self,cmd):
+        self.conn.send('221 Goodbye.\r\n')
+    def NOOP(self,cmd):
+        self.conn.send('200 OK.\r\n')
+    def TYPE(self,cmd):
         self.mode=cmd[5]
-        self.conn.send('File type: Binary\r\n')		
+        self.conn.send('200 Binary mode.\r\n')
  
-    def CDUP(self,cmd): #Change to Parent Directory.
+    def CDUP(self,cmd): #Move to parent directory
         if not os.path.samefile(self.cwd,self.basewd):
             self.cwd=os.path.abspath(os.path.join(self.cwd,'..'))
-        self.conn.send('Moved Up.\r\n')
-		
-    def PWD(self,cmd): #Print working directory. Returns the current directory of the host.
+        self.conn.send('200 OK.\r\n')
+    def PWD(self,cmd): #Print current directory
         cwd=os.path.relpath(self.cwd,self.basewd)
         if cwd=='.':
             cwd='/'
         else:
             cwd='/'+cwd
-        self.conn.send('\"%s\"\r\n' % cwd)
-		
-    def CWD(self,cmd): #Change working directory.
+        self.conn.send('257 \"%s\"\r\n' % cwd)
+    def CWD(self,cmd): #Change directory
         chwd=cmd[4:-2]
         if chwd=='/':
             self.cwd=self.basewd
@@ -63,18 +70,18 @@ class FTPserverThread(threading.Thread):
             self.cwd=os.path.join(self.basewd,chwd[1:])
         else:
             self.cwd=os.path.join(self.cwd,chwd)
-        self.conn.send('Directory Changed.\r\n')
+        self.conn.send('250 OK.\r\n')
  
-    def PORT(self,cmd): #Specifies an address and port to which the server should connect
+    def PORT(self,cmd): #Specifies address and port which server should connect to.
         if self.pasv_mode:
             self.servsock.close()
             self.pasv_mode = False
         l=cmd[5:].split(',')
         self.dataAddr='.'.join(l[:4])
         self.dataPort=(int(l[4])<<8)+int(l[5])
-        self.conn.send('Get port.\r\n')
- 
-    def PASV(self,cmd): #Enter passive mode.
+        self.conn.send('200 Get port.\r\n')
+ 
+    def PASV(self,cmd): #FTP Passive mode
         self.pasv_mode = True
         self.servsock = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
         self.servsock.bind((local_ip,0))
@@ -97,8 +104,7 @@ class FTPserverThread(threading.Thread):
         if self.pasv_mode:
             self.servsock.close()
  
- 
-    def LIST(self,cmd):
+    def LIST(self,cmd): #List files in current directory
         self.conn.send('150 Here comes the directory listing.\r\n')
         print 'list:', self.cwd
         self.start_datasock()
@@ -118,29 +124,16 @@ class FTPserverThread(threading.Thread):
         ftime=time.strftime(' %b %d %H:%M ', time.gmtime(st.st_mtime))
         return d+mode+' 1 user group '+str(st.st_size)+ftime+os.path.basename(fn)
  
-    def MKD(self,cmd): #Make directory.
-        dn=os.path.join(self.cwd,cmd[4:-2])
-        os.mkdir(dn)
-        self.conn.send('257 Directory created.\r\n')
- 
-    def DELE(self,cmd): #Delete file.
-        fn=os.path.join(self.cwd,cmd[5:-2])
-        if allow_delete:
-            os.remove(fn)
-            self.conn.send('250 File deleted.\r\n')
-        else:
-            self.conn.send('450 Not allowed.\r\n')
- 
-    def RNFR(self,cmd): #Rename from.
-        self.rnfn=os.path.join(self.cwd,cmd[5:-2])
-        self.conn.send('350 Ready.\r\n')
- 
-    def RNTO(self,cmd): #Rename To.
         fn=os.path.join(self.cwd,cmd[5:-2])
         os.rename(self.rnfn,fn)
         self.conn.send('250 File renamed.\r\n')
-  
-    def RETR(self,cmd): #Retrieve a copy of the file.
+ 
+    def REST(self,cmd):
+        self.pos=int(cmd[5:-2])
+        self.rest=True
+        self.conn.send('250 File position reseted.\r\n')
+ 
+    def RETR(self,cmd): #Download
         fn=os.path.join(self.cwd,cmd[5:-2])
         print 'Downlowding:',fn
         if self.mode=='I':
@@ -160,7 +153,7 @@ class FTPserverThread(threading.Thread):
         self.stop_datasock()
         self.conn.send('226 Transfer complete.\r\n')
  
-    def STOR(self,cmd): #Accept data and store data as a file at the server site.
+    def STOR(self,cmd): #Upload
         fn=os.path.join(self.cwd,cmd[5:-2])
         print 'Uplaoding:',fn
         if self.mode=='I':
