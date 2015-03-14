@@ -12,14 +12,14 @@ class FTPserverThread(threading.Thread):
     def __init__(self,(conn,addr)):
         self.conn=conn
         self.addr=addr
-        self.basewd=currdir
+        self.basewd=currdir #folder script is running from
         self.cwd=self.basewd
         self.rest=False
         self.pasv_mode=False
         threading.Thread.__init__(self)
  
     def run(self):
-        self.conn.send('220 Welcome!\r\n')
+        self.conn.send('Welcome!\r\n')
         while True:
             cmd=self.conn.recv(256) #receive data, Max 256 at once
             if not cmd: break
@@ -30,22 +30,22 @@ class FTPserverThread(threading.Thread):
                     func(cmd)
                 except Exception,e:
                     print 'ERROR:',e
-                    self.conn.send('500 Sorry.\r\n')
+                    self.conn.send('Sorry.\r\n')
  
-    def USER(self,cmd):
-        self.conn.send('331 OK.\r\n')
-    def QUIT(self,cmd):
-        self.conn.send('221 Goodbye.\r\n')		
-    def PASS(self,cmd):
-        self.conn.send('230 OK.\r\n')
-    def TYPE(self,cmd):
+    def USER(self,cmd): #Authentication username.
+        self.conn.send('OK.\r\n')
+    def QUIT(self,cmd): #Disconnect.
+        self.conn.send('Disconnected\r\n')		
+    def PASS(self,cmd): #Authentication password.
+        self.conn.send('OK.\r\n')
+    def TYPE(self,cmd): #Sets the transfer mode
         self.mode=cmd[5]
-        self.conn.send('200 Binary mode.\r\n')		
+        self.conn.send('File type: Binary\r\n')		
  
     def CDUP(self,cmd): #Change to Parent Directory.
         if not os.path.samefile(self.cwd,self.basewd):
             self.cwd=os.path.abspath(os.path.join(self.cwd,'..'))
-        self.conn.send('200 OK.\r\n')
+        self.conn.send('Moved Up.\r\n')
 		
     def PWD(self,cmd): #Print working directory. Returns the current directory of the host.
         cwd=os.path.relpath(self.cwd,self.basewd)
@@ -53,7 +53,7 @@ class FTPserverThread(threading.Thread):
             cwd='/'
         else:
             cwd='/'+cwd
-        self.conn.send('257 \"%s\"\r\n' % cwd)
+        self.conn.send('\"%s\"\r\n' % cwd)
 		
     def CWD(self,cmd): #Change working directory.
         chwd=cmd[4:-2]
@@ -63,7 +63,7 @@ class FTPserverThread(threading.Thread):
             self.cwd=os.path.join(self.basewd,chwd[1:])
         else:
             self.cwd=os.path.join(self.cwd,chwd)
-        self.conn.send('250 OK.\r\n')
+        self.conn.send('Directory Changed.\r\n')
  
     def PORT(self,cmd): #Specifies an address and port to which the server should connect
         if self.pasv_mode:
@@ -72,8 +72,8 @@ class FTPserverThread(threading.Thread):
         l=cmd[5:].split(',')
         self.dataAddr='.'.join(l[:4])
         self.dataPort=(int(l[4])<<8)+int(l[5])
-        self.conn.send('200 Get port.\r\n')
- 
+        self.conn.send('Get port.\r\n')
+ 
     def PASV(self,cmd): #Enter passive mode.
         self.pasv_mode = True
         self.servsock = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
