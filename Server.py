@@ -31,30 +31,17 @@ class FTPserverThread(threading.Thread):
                 except Exception,e:
                     print 'ERROR:',e
                     self.conn.send('500 Sorry.\r\n')
- 
-    def SYST(self,cmd):
-        self.conn.send('215 UNIX Type: L8\r\n')
-    def OPTS(self,cmd):
-        if cmd[5:-2].upper()=='UTF8 ON':
-            self.conn.send('200 OK.\r\n')
-        else:
-            self.conn.send('451 Sorry.\r\n')
+
     def USER(self,cmd):
         self.conn.send('331 OK.\r\n')
     def PASS(self,cmd):
         self.conn.send('230 OK.\r\n')
     def QUIT(self,cmd):
         self.conn.send('221 Goodbye.\r\n')
-    def NOOP(self,cmd): #noopnoopnoop
-        self.conn.send('200 OK.\r\n')
     def TYPE(self,cmd):
         self.mode=cmd[5]
         self.conn.send('200 Binary mode.\r\n')
  
-    def CDUP(self,cmd):
-        if not os.path.samefile(self.cwd,self.basewd):
-            self.cwd=os.path.abspath(os.path.join(self.cwd,'..'))
-        self.conn.send('200 OK.\r\n')
     def PWD(self,cmd):
         cwd=os.path.relpath(self.cwd,self.basewd)
         if cwd=='.':
@@ -95,7 +82,6 @@ class FTPserverThread(threading.Thread):
         if self.pasv_mode:
             self.servsock.close()
  
- 
     def LIST(self,cmd):
         self.conn.send('150 Here comes the directory listing.\r\n')
         print 'list:', self.cwd
@@ -108,12 +94,6 @@ class FTPserverThread(threading.Thread):
  
     def toListItem(self,fn):
         st=os.stat(fn)
-        fullmode='rwxrwxrwx'
-        mode=''
-        for i in range(9):
-            mode+=((st.st_mode>>(8-i))&1) and fullmode[i] or '-'
-        d=(os.path.isdir(fn)) and 'd' or '-'
-        ftime=time.strftime(' %b %d %H:%M ', time.gmtime(st.st_mtime))
         return ' '+os.path.basename(fn).ljust(30)+str(st.st_size)+' bytes'
  
     def REST(self,cmd):
